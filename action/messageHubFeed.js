@@ -46,6 +46,7 @@ function main(params) {
     }
 
     if (params.lifecycleEvent === 'CREATE') {
+        console.log('Nice job! We tested build and deployment');
         return common.createTrigger(endpoint, massagedParams, webActionName);
     } else if (params.lifecycleEvent === 'READ') {
         return common.getTrigger(endpoint, massagedParams, webActionName);
