@@ -49,6 +49,7 @@ seconds_in_day = 86400
 non_existent_topic_status_code = 404
 invalid_credential_status_code = 403
 processingManager = Manager()
+retry_limit = os.getenv('RETRY_LIMIT', 3)
 
 # Each Consumer instance will have a shared dictionary that will be used to
 # indicate state, and desired state changes between this process, and the ConsumerProcess.
@@ -176,6 +177,7 @@ class ConsumerProcess (Process):
         self.triggerURL = self.__triggerURL(params["triggerURL"])
         self.brokers = params["brokers"]
         self.topic = params["topic"]
+        self.retries = 0
 
         self.sharedDictionary = sharedDictionary
 
@@ -311,10 +313,20 @@ class ConsumerProcess (Process):
             self.consumer = self.__createConsumer()
 
             while self.__shouldRun():
-                messages = self.__pollForMessages()
+                try:
+                    messages = self.__pollForMessages()
+                except KafkaError as e:
+                    __handle_kafka_error(e)
 
                 if len(messages) > 0:
-                    self.__fireTrigger(messages)
+                    try:
+                        self.__fireTrigger(messages)
+                    except KafkaError as e:
+                        __handle_kafka_error(e)
+
+                # at this point, we successfully polled, fired a trigger and committed
+                # the current offset
+                self.retries = 0
 
                 time.sleep(0.1)
 
@@ -672,3 +684,22 @@ class ConsumerProcess (Process):
             raise(ValueError('Parsing float value "{}" would result in "-Infinity".'.format(data)))
 
         return res
+
+    def __handle_kafka_error(self, e):
+        # For retryable Kafka errors, increment the retry counter until the
+        # retry_limit is reached and stay within the main loop. When this is
+        # reached or we encounter an unretryable error, re-raise the exception
+        # to exit the main loop and restart the consumer.
+
+        limit_reached = self.retries < retry_limit
+
+        if e.retriable and not limit_reached:
+            logging.warning('[{}] Retryable Kafka error, retry {}/{}: {}'
+                            .format(self.trigger, self.retries, retry_limit, e))
+            self.retries += 1
+        elif e.retriable and limit_reached:
+            logging.error('[{}] Retry limit reached: {}'.format(self.trigger, e))
+            raise e
+        else:
+            logging.error('[{}] Non-retryable Kafka error: {}'.format(self.trigger, e))
+            raise e
