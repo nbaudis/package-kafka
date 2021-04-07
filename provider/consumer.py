@@ -315,18 +315,18 @@ class ConsumerProcess (Process):
             while self.__shouldRun():
                 try:
                     messages = self.__pollForMessages()
+                    # we successfully polled, reset retry counter
+                    self.retries = 0
                 except KafkaError as e:
                     __handle_kafka_error(e)
 
                 if len(messages) > 0:
                     try:
                         self.__fireTrigger(messages)
+                        # we successfully committed after firing the trigger, reset retry counter
+                        self.retries = 0
                     except KafkaError as e:
                         __handle_kafka_error(e)
-
-                # at this point, we successfully polled, fired a trigger and committed
-                # the current offset
-                self.retries = 0
 
                 time.sleep(0.1)
 
