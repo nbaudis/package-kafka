@@ -472,6 +472,7 @@ class ConsumerProcess (Process):
                         # the consumer may have consumed messages that did not make it into the messages array.
                         # the consumer may have consumed messages that did not make it into the messages array.
                         # be sure to only commit to the messages that were actually fired.
+                        logging.info('[{}] Committing {} messages to offset {} of partition {}'.format(self.trigger, len(messages), lastMessage.offset(), lastMessage.partition()))
                         self.consumer.commit(offsets=self.__getOffsetList(messages), asynchronous=False)
                         retry = False
                     elif self.__shouldDisable(status_code, response.headers):
