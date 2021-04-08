@@ -222,6 +222,8 @@ class ConsumerProcess (Process):
         else:
             self.encodeKeyAsBase64 = False
 
+        logging.info('[{}] Starting consumer with uuid {}'.format(self.trigger, params['uuid']))
+
         try:
             response = requests.get(self.triggerURL, auth=self.authHandler, timeout=10.0, verify=check_ssl)
             status_code = response.status_code
