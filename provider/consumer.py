@@ -318,6 +318,7 @@ class ConsumerProcess (Process):
                     # we successfully polled, reset retry counter
                     self.retries = 0
                 except KafkaError as e:
+                    self.updateLastPoll()
                     self.__handle_kafka_error(e)
 
                 if len(messages) > 0:
