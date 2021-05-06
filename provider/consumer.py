@@ -27,7 +27,7 @@ import base64
 
 # HEADS UP! I'm importing confluent_kafka.Consumer as KafkaConsumer to avoid a
 # naming conflict with my own Consumer class
-from confluent_kafka import Consumer as KafkaConsumer, KafkaError, TopicPartition
+from confluent_kafka import Consumer as KafkaConsumer, KafkaError, KafkaException, TopicPartition
 from database import Database
 from datetime import datetime
 from datetimeutils import secondsSince
@@ -317,7 +317,7 @@ class ConsumerProcess (Process):
                     messages = self.__pollForMessages()
                     # we successfully polled, reset retry counter
                     self.retries = 0
-                except KafkaError as e:
+                except KafkaException as e:
                     self.updateLastPoll()
                     self.__handle_kafka_error(e)
 
@@ -326,7 +326,7 @@ class ConsumerProcess (Process):
                         self.__fireTrigger(messages)
                         # we successfully committed after firing the trigger, reset retry counter
                         self.retries = 0
-                    except KafkaError as e:
+                    except KafkaException as e:
                         self.__handle_kafka_error(e)
 
                 time.sleep(0.1)
@@ -694,11 +694,18 @@ class ConsumerProcess (Process):
 
         limit_reached = self.retries < retry_limit
 
-        if e.retriable and not limit_reached:
+        try:
+            retriable = e.args[0].retriable()
+        except Exception:
+            logging.error('[{}] Failed to extract KafkaError retry value from exception {}'
+                          .format(self.trigger, e))
+            raise e
+
+        if retriable and not limit_reached:
             logging.warning('[{}] Retryable Kafka error, retry {}/{}: {}'
                             .format(self.trigger, self.retries, retry_limit, e))
             self.retries += 1
-        elif e.retriable and limit_reached:
+        elif retriable and limit_reached:
             logging.error('[{}] Retry limit reached: {}'.format(self.trigger, e))
             raise e
         else:
